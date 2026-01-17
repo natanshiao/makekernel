@@ -235,7 +235,7 @@ Makekernel() {
     echo "- INSTALLER EXIT"
     exit 0
   else
-    echo "- Recompiling kernel, wait..."
+    echo "- compiling kernel, wait..."
     sleep 2
     Compile_kernel
     echo "- Installing kernel, wait..."
