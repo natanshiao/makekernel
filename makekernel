@@ -11,165 +11,167 @@ export LLVM=1
 export LLVM_IAS=1
 
 Build_grub() {
-  sudo grub-mkconfig -o /boot/grub/grub.cfg
+	sudo grub-mkconfig -o /boot/grub/grub.cfg
 }
 
 Kernel_location_detect() {
-  # Fungsi ini perlu di jalankan untuk mengecek keberadaan target kernel setelah .easykernel
-  kernel_location="/boot/vmlinuz-$kernel_version"
-  module_location="/usr/lib/modules/$kernel_version"
-  preset_location="/etc/mkinitcpio.d/$kernel_version.preset"
+	# Fungsi ini perlu di jalankan untuk mengecek keberadaan target kernel setelah .easykernel
+	kernel_location="/boot/vmlinuz-$kernel_version"
+	module_location="/usr/lib/modules/$kernel_version"
+	preset_location="/etc/mkinitcpio.d/$kernel_version.preset"
 }
 
 Kernel_version_detect() {
-  # sub detection
-  if [ -e include/config/auto.conf ]; then
-    kernel_version="$(make kernelrelease)"
-    Kernel_location_detect
-  fi
+	# sub detection
+	if [ -e include/config/auto.conf ]; then
+		kernel_version="$(make kernelrelease)"
+		Kernel_location_detect
+	fi
 }
 
 Check_if_installed() {
-  # Main detection, ngecek kalo kernel pernah di kompile
-  if [[ -e include/config/auto.conf && -e arch/x86/boot/bzImage && -e .easykernel ]]; then
-    Kernel_version_detect
-    return 0
-  else
-    echo "- no kernel is compiled yet"
-    return 1
-  fi
+	# Main detection, ngecek kalo kernel pernah di kompile
+	if [[ -e include/config/auto.conf && -e arch/x86/boot/bzImage && -e .easykernel ]]; then
+		Kernel_version_detect
+		return 0
+	else
+		echo "- no kernel is compiled yet"
+		return 1
+	fi
 }
 
 Check_config() {
-  # user butuh menyiapkan config kernel dulu cik kalo kagga, bagaikan koki tanpa resep, mau ngapain?
-  if [[ -e .config ]]; then
-    kernel_config="$(awk -F'"' '/^CONFIG_LOCALVERSION=/{print $2}' .config)"
-    echo "- using $kernel_config as config"
-  else
-    echo "THERE IS NO CONFIG YET, PLEASE CONFIGURE YOUR CONFIG FIRST!"
-    exit 1
-  fi
+	# user butuh menyiapkan config kernel dulu cik kalo kagga, bagaikan koki tanpa resep, mau ngapain?
+	if [[ -e .config ]]; then
+		kernel_config="$(awk -F'"' '/^CONFIG_LOCALVERSION=/{print $2}' .config)"
+		echo "- using $kernel_config as config"
+	else
+		echo "THERE IS NO CONFIG YET, PLEASE CONFIGURE YOUR CONFIG FIRST!"
+		exit 1
+	fi
 }
 
 dkms_module_install() {
-  # Kagga kepake karena DKMS agak bermasalah anjirlah
-  dkms status | grep "$kernel_version" |
-    awk -F, '{print $1}' |
-    awk '{print $1, $2}' |
-    while read mod ver; do
-      sudo dkms install "$mod/$ver" -k "$kernel_version"
-    done
+	# Kagga kepake karena DKMS agak bermasalah anjirlah
+	dkms status | grep "$kernel_version" |
+		awk -F, '{print $1}' |
+		awk '{print $1, $2}' |
+		while read mod ver; do
+			sudo dkms install "$mod/$ver" -k "$kernel_version"
+		done
 }
 
 Clean_kernel_status() {
-  if [ -e .easykernel ]; then
-    rm .easykernel
-    echo "- cleaned .easykernel"
-  fi
+	if [ -e .easykernel ]; then
+		rm .easykernel
+		echo "- cleaned .easykernel"
+	fi
 
-  if [ -e .easykernel_counter ]; then
-    rm .easykernel_counter
-    echo "- cleaned .easykernel_counter"
-  fi
+	if [ -e .easykernel_counter ]; then
+		rm .easykernel_counter
+		echo "- cleaned .easykernel_counter"
+	fi
 }
 
 Clean_the_kernel() {
-  if [ "$(dkms status | grep $kernel_version)" ]; then
-    dkms status | grep "$kernel_version" |
-      awk -F, '{print $1}' |
-      awk '{print $1, $2}' |
-      while read mod ver; do
-        sudo dkms remove "$mod/$ver" -k "$kernel_version"
-      done
-    echo "cleaned dkms"
-    sleep 3
-  fi
-  Kernel_location_detect
-  if [ -e "$kernel_location" ] && [ "$(cat .easykernel_counter)" ]; then
-    sudo rm "/boot/vmlinuz-$(cat .easykernel)"
-    sudo rm "/boot/System.map-$(cat .easykernel)"
-    sudo rm "/boot/initramfs-$(cat .easykernel).img"
-    echo "- cleaned kernel"
-    sleep 3
-  fi
-  if [ -e "$module_location" ] && [ "$(cat .easykernel_counter)" ]; then
-    sudo rm -r "/usr/lib/modules/$(cat .easykernel)"
-    echo "- cleaned modules"
-    sleep 3
-  fi
-  if [ -e "$preset_location" ] && [ "$(cat .easykernel_counter)" ]; then
-    sudo rm "/etc/mkinitcpio.d/$(cat .easykernel).preset"
-    echo "- cleaned preset"
-    sleep 3
-  fi
+	if dkms status | grep -q -- "$kernel_version"; then
+		dkms status | grep -- "$kernel_version" |
+			awk -F',' '{print $1}' |
+			awk '{print $1 "/" $2}' |
+			while read -r modver; do
+				sudo dkms remove "$modver" -k "$kernel_version"
+			done
+		echo "cleaned dkms"
+		sleep 3
+	else
+		echo "No DKMS modules installed for kernel $kernel_version"
+	fi
+	Kernel_location_detect
+	if [ -e "$kernel_location" ] && [ "$(cat .easykernel_counter)" ]; then
+		sudo rm "/boot/vmlinuz-$(cat .easykernel)"
+		sudo rm "/boot/System.map-$(cat .easykernel)"
+		sudo rm "/boot/initramfs-$(cat .easykernel).img"
+		echo "- cleaned kernel"
+		sleep 3
+	fi
+	if [ -e "$module_location" ] && [ "$(cat .easykernel_counter)" ]; then
+		sudo rm -r "/usr/lib/modules/$(cat .easykernel)"
+		echo "- cleaned modules"
+		sleep 3
+	fi
+	if [ -e "$preset_location" ] && [ "$(cat .easykernel_counter)" ]; then
+		sudo rm "/etc/mkinitcpio.d/$(cat .easykernel).preset"
+		echo "- cleaned preset"
+		sleep 3
+	fi
 }
 
 Clean_Previous_kernel() {
-  if [ -e .easykernel ]; then
-    if [ $(cat .easykernel_counter) == 0 ]; then
-      echo "- WARNING: KERNEL SOURCE IS NOT CLEAN OR LOCAL VERSION IS CHANGED"
-      echo "- PREVIOUS KERNEL WILL BE UNINSTALLED AFTER KERNEL BUILD DONE"
-      echo 1 >.easykernel_counter
-    else
-      echo "CLEANING PREVIOUS KERNEL..."
-      Clean_the_kernel
-      echo 0 >.easykernel_counter
-    fi
-  fi
+	if [ -e .easykernel ]; then
+		if [ $(cat .easykernel_counter) == 0 ]; then
+			echo "- WARNING: KERNEL SOURCE IS NOT CLEAN OR LOCAL VERSION IS CHANGED"
+			echo "- PREVIOUS KERNEL WILL BE UNINSTALLED AFTER KERNEL BUILD DONE"
+			echo 1 >.easykernel_counter
+		else
+			echo "CLEANING PREVIOUS KERNEL..."
+			Clean_the_kernel
+			echo 0 >.easykernel_counter
+		fi
+	fi
 }
 
 Compiled_location() {
-  # DEBUG
-  if [[ -e "$kernel_location" && -d "$module_location" && -e "$preset_location" ]]; then
-    success=true
-  else
-    success=false
-  fi
+	# DEBUG
+	if [[ -e "$kernel_location" && -d "$module_location" && -e "$preset_location" ]]; then
+		success=1
+	else
+		success=0
+	fi
 }
 
 Erorr_installed_checking() {
-  # DEBUG
-  Compiled_location
-  if $success; then
-    echo "- no error reported"
-  else
-    echo "- ERORR SOME CONFIGURATION IS MISSING, CHECKING FOR ERRORS"
-    if [ ! -e "$kernel_location" ]; then
-      echo "kernel is missing"
-    fi
-    if [ ! -e "$module_location" ]; then
-      echo "modules is missing"
-    fi
-    if [ ! -e "$preset_location" ]; then
-      echo "preset is missing"
-    fi
-    exit 1
-  fi
+	# DEBUG
+	Compiled_location
+	if $success; then
+		echo "- no error reported"
+	else
+		echo "- ERORR SOME CONFIGURATION IS MISSING, CHECKING FOR ERRORS"
+		if [ ! -e "$kernel_location" ]; then
+			echo "kernel is missing"
+		fi
+		if [ ! -e "$module_location" ]; then
+			echo "modules is missing"
+		fi
+		if [ ! -e "$preset_location" ]; then
+			echo "preset is missing"
+		fi
+		exit 1
+	fi
 }
 
 Install_kernel() {
-  # INSTALLING KERNEL, sangat anu...
-  echo "- Installing kernel MODULES...(wait for 3s)"
-  sleep 3
-  sudo make modules_install -j$(nproc)
-  echo "--- MODULES INSTALLED---
+	# INSTALLING KERNEL, sangat anu...
+	echo "- Installing kernel MODULES...(wait for 3s)"
+	sleep 3
+	sudo make modules_install -j$(nproc)
+	echo "--- MODULES INSTALLED---
   "
-  echo "- Installing kernel headers...(wait for 3s)"
-  sleep 3
-  sudo mkdir -p "/usr/lib/modules/$kernel_version"
-  sudo ln -sfn "$(pwd)" "/usr/lib/modules/$kernel_version/build"
-  sudo ln -sfn "$(pwd)" "/usr/lib/modules/$kernel_version/source"
-  echo "--- HEADER INSTALLED---"
+	echo "- Installing kernel headers...(wait for 3s)"
+	sleep 3
+	sudo mkdir -p "/usr/lib/modules/$kernel_version"
+	sudo ln -sfn "$(pwd)" "/usr/lib/modules/$kernel_version/build"
+	sudo ln -sfn "$(pwd)" "/usr/lib/modules/$kernel_version/source"
+	echo "--- HEADER INSTALLED---"
 
-  echo "- installing kernel...(wait for 3s)"
-  sleep 3
-  sudo cp arch/x86/boot/bzImage "/boot/vmlinuz-$kernel_version"
-  sudo cp System.map "/boot/System.map-$kernel_version"
-  echo "--- KERNEL INSTALLED---"
+	echo "- installing kernel...(wait for 3s)"
+	sleep 3
+	sudo cp arch/x86/boot/bzImage "/boot/vmlinuz-$kernel_version"
+	sudo cp System.map "/boot/System.map-$kernel_version"
+	echo "--- KERNEL INSTALLED---"
 
-  echo "- Making MKINITCPIO configuration...(wait for 3s)"
-  sleep 3
-  sudo tee "/etc/mkinitcpio.d/$kernel_version.preset" >/dev/null <<EOF
+	echo "- Making MKINITCPIO configuration...(wait for 3s)"
+	sleep 3
+	sudo tee "/etc/mkinitcpio.d/$kernel_version.preset" >/dev/null <<EOF
 # mkinitcpio preset file for the '$kernel_version' kernel
 
 #ALL_config="/etc/mkinitcpio.conf"
@@ -190,111 +192,117 @@ default_image="/boot/initramfs-$kernel_version.img"
 #fallback_options="-S autodetect"
 EOF
 
-  echo "--- PRESET CREATED ---"
-  echo "- BUILD INITRAMFS, DKMS & UPDATING GRUB...(wait for 3s)"
-  sudo mkinitcpio -p "$kernel_version"
-  Build_grub
-  dkms_module_install
-  sleep 3
+	echo "--- PRESET CREATED ---"
+	echo "- BUILD INITRAMFS, DKMS & UPDATING GRUB...(wait for 3s)"
+	sudo mkinitcpio -p "$kernel_version"
+	Build_grub
+	dkms_module_install
+	sleep 3
 
-  echo "--- GRUB & MKINITCPIO BUILT DONE ---"
-  echo "- checking for everything...(wait for 3s)"
-  sleep 3
+	echo "--- GRUB & MKINITCPIO BUILT DONE ---"
+	echo "- checking for everything...(wait for 3s)"
+	sleep 3
 
-  if $success; then
-    echo "$kernel_version" >.easykernel
-    echo 0 >.easykernel_counter
-    echo "- KERNEL INSTALL DONE"
-  fi
+	if $success; then
+		echo "$kernel_version" >.easykernel
+		echo 0 >.easykernel_counter
+		echo "- KERNEL INSTALL DONE"
+	fi
 }
 
 Compile_kernel() {
-  Check_config
-  Kernel_version_detect
-  Clean_Previous_kernel
-  echo "- Kernel will be compile..(wait for 3s)"
-  sleep 3
-  make -j$(nproc)
+	Check_config
+	Kernel_version_detect
+	Clean_Previous_kernel
+	echo "- Kernel will be compile..(wait for 3s)"
+	sleep 3
+	make -j$(nproc)
 
-  Clean_Previous_kernel
+	Clean_Previous_kernel
 
-  echo "--- KERNEL HAS BEEN COMPILED---"
-  echo "- Installing kernel modules...(wait for 3s)"
-  sleep 3
-  make modules_prepare -j$(nproc)
-  echo "--- KERNEL MODULES HAS BEEN COMPILED---"
+	echo "--- KERNEL HAS BEEN COMPILED---"
+	echo "- Installing kernel modules...(wait for 3s)"
+	sleep 3
+	make modules_prepare -j$(nproc)
+	echo "--- KERNEL MODULES HAS BEEN COMPILED---"
 
-  Kernel_version_detect
-  Install_kernel
+	Kernel_version_detect
+	Install_kernel
 }
 
 Makekernel() {
-  echo "- Do you want to compile and install the kernel now? Y/n"
-  read -p "- choose: " comp
-  if [ "$comp" == 'n' ] || [ "$comp" == 'N' ]; then
-    echo "- INSTALLER EXIT"
-    exit 0
-  else
-    echo "- compiling kernel, wait..."
-    sleep 2
-    Compile_kernel
-    echo "- Installing kernel, wait..."
-    sleep 2
-    Install_kernel
-  fi
+	echo "- Do you want to compile and install the kernel now? Y/n"
+	read -p "- choose: " comp
+	if [ "$comp" == 'n' ] || [ "$comp" == 'N' ]; then
+		echo "- INSTALLER EXIT"
+		exit 0
+	elif [ "$recomp" == 'y' ] || [ "$recomp" == "Y" ] || [ "$recomp" == "" ]; then
+		echo "- compiling kernel, wait..."
+		sleep 2
+		Compile_kernel
+		echo "- Installing kernel, wait..."
+		sleep 2
+		Install_kernel
+	else
+		echo "- unknown number selected : $recomp ABORTING..."
+		exit 1
+	fi
 }
 
 Kernel_is_instaled() {
-  Check_config
-  echo "- kernel release : $kernel_version"
-  echo "- previous kernel : $(cat .easykernel)"
-  echo "- Y : recompile and install"
-  echo "- N : abort"
-  echo "- U : uninstall"
-  echo "- R : reinstall kernel (no recompile)"
-  read -p "- choose Y/n/u/r : " recomp
-  if [ "$recomp" == 'n' ] || [ "$recomp" == "N" ]; then
-    echo "ABORT"
-    exit 0
-  elif [ "$recomp" == 'u' ] || [ "$recomp" == "U" ]; then
-    echo "- Cleaning Installed kernel and modules, wait..."
-    sleep 2
-    Clean_the_kernel
-    Clean_kernel_status
-    Compiled_location
-    if $success; then
-      Build_grub
-      echo "- CLEANING DONE"
-    fi
-    exit 0
-  elif [ "$recomp" == 'r' ] || [ "$recomp" == "R" ]; then
-    echo "- Cleaning Installed kernel and modules, wait..."
-    sleep 2
-    Clean_the_kernel
-    echo "- reinstalling Kernel now..."
-    sleep 2
-    Install_kernel
-  else
-    echo "- Recompiling kernel, wait.."
-    sleep 2
-    Compile_kernel
-    echo "- Installing kernel now..."
-    sleep 2
-    Install_kernel
-  fi
+	Check_config
+	echo "- kernel release : $kernel_version"
+	echo "- previous kernel : $(cat .easykernel)"
+	echo "- Y : recompile and install"
+	echo "- N : abort"
+	echo "- U : uninstall"
+	echo "- R : reinstall kernel (no recompile)"
+	read -p "- choose Y/n/u/r : " recomp
+	if [ "$recomp" == 'n' ] || [ "$recomp" == "N" ]; then
+		echo "ABORT"
+		exit 0
+	elif [ "$recomp" == 'u' ] || [ "$recomp" == "U" ]; then
+		echo "- Cleaning Installed kernel and modules, wait..."
+		sleep 2
+		Clean_the_kernel
+		Clean_kernel_status
+		Compiled_location
+		if [[ ! $success ]]; then
+			Build_grub
+			echo "- CLEANING DONE"
+		fi
+		exit 0
+	elif [ "$recomp" == 'r' ] || [ "$recomp" == "R" ]; then
+		echo "- Cleaning Installed kernel and modules, wait..."
+		sleep 2
+		Clean_the_kernel
+		echo "- reinstalling Kernel now..."
+		sleep 2
+		Install_kernel
+	elif [ "$recomp" == 'y' ] || [ "$recomp" == "Y" ] || [ "$recomp" == "" ]; then
+		echo "- Recompiling kernel, wait.."
+		sleep 2
+		Compile_kernel
+		echo "- Installing kernel now..."
+		sleep 2
+		Install_kernel
+	else
+		echo "- unknown number selected : $recomp ABORTING..."
+		exit 1
+	fi
 }
 
 Main() {
-  clear
-  Kernel_location_detect
-  echo "---MAKE KERNEL : EASY KERNEL INSTALL AND UNINSTALL---"
-  echo "- INFO : USING CLANG AS DEFAULT COMPILER"
-  echo "- MAKEKERNEL Version : 1.8.3"
-  if Check_if_installed; then
-    Kernel_is_instaled
-  else
-    Makekernel
-  fi
+	clear
+	Kernel_location_detect
+	echo "---MAKE KERNEL : EASY KERNEL INSTALL AND UNINSTALL---"
+	echo "- INFO : USING CLANG AS DEFAULT COMPILER"
+	echo "- MAKEKERNEL Version : 1.8.5"
+	if Check_if_installed; then
+		Kernel_is_instaled
+	else
+		Makekernel
+	fi
 }
 
 Main
