@@ -31,7 +31,7 @@ Kernel_version_detect() {
 
 Check_if_installed() {
 	# Main detection, ngecek kalo kernel pernah di kompile
-	if [[ -e include/config/auto.conf && -e arch/x86/boot/bzImage && -e .easykernel ]]; then
+	if [[ -e include/config/auto.conf ]] && [[ -e arch/x86/boot/bzImage ]] || [[ -e .easykernel ]]; then
 		Kernel_version_detect
 		return 0
 	else
@@ -214,9 +214,16 @@ Compile_kernel() {
 	Check_config
 	Kernel_version_detect
 	Clean_Previous_kernel
+	read -p "- Core(s) for compile default ($(nproc)) : " cores
+	if [[ $cores -gt $(nproc) ]] || [[ $cores -lt 1 ]]; then
+		echo "- BAD CORES COUNT, ABORT!"
+		exit 1
+	elif [[ $cores == "" ]]; then
+		$cores=$(nproc)
+	fi
 	echo "- Kernel will be compile..(wait for 3s)"
 	sleep 3
-	make -j$(nproc)
+	make -j"$cores"
 
 	Clean_Previous_kernel
 
@@ -252,10 +259,12 @@ Makekernel() {
 Kernel_is_instaled() {
 	Check_config
 	echo "- kernel release : $kernel_version"
-	echo "- previous kernel : $(cat .easykernel)"
+	if [[ -e .easykernel ]]; then
+		echo "- previous kernel : $(cat .easykernel)"
+	fi
 	echo "- Y : recompile and install"
 	echo "- N : abort"
-	echo "- U : uninstall"
+	echo "- U : uninstall (will clear installed stated!)"
 	echo "- R : reinstall kernel (no recompile)"
 	read -p "- choose Y/n/u/r : " recomp
 	if [ "$recomp" == 'n' ] || [ "$recomp" == "N" ]; then
